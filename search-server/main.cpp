@@ -2,3 +2,19 @@
 // Напишите ответ здесь:
 
 // Закомитьте изменения и отправьте их в свой репозиторий.
+
+#include <iostream>
+
+using namespace std;
+
+int main() {
+	setlocale(LC_ALL, "rus");
+	int count = 0;
+	for (int i = 1; i < 1000; ++i) {
+		if (i % 10 == 3 || (i - i % 100) / 100 == 3 || i / 100 == 3) {
+			++count;
+			cout << i << endl;
+		}
+	}
+	cout << "Цифра 3, в промежутке [1;1000], встречается: " << count << " раз." << endl;
+}
