@@ -474,9 +474,7 @@ void TestComputeAverageRating() {
     server.AddDocument(3, "cat in the village"s, DocumentStatus::ACTUAL, {});
     server.AddDocument(4, "sky in the village"s, DocumentStatus::ACTUAL, { 1, 1, 1 });
     const vector<Document> find_top = server.FindTopDocuments("dog cat sky"s);
-    if (find_top.size() < 4) {
-        ASSERT_HINT(false, "The server does not add documents correctly"s);
-    }
+    ASSERT_EQUAL_HINT(find_top.size(), 4, "The server does not add documents correctly"s);
     ASSERT_EQUAL_HINT(find_top.at(0).rating, (1 + 3 + 3) / 3, "The server incorrectly counts the rating"s);
     ASSERT_EQUAL_HINT(find_top.at(1).rating, (1 + 1 + 1) / 3, "The server incorrectly counts the rating"s);
     ASSERT_EQUAL_HINT(find_top.at(2).rating, (1 + 4 + 3) / 3, "The server incorrectly counts the rating"s);
@@ -593,9 +591,7 @@ void TestRelevanceTopDocs() {
     //CITY
     //double rel_city = log(server.GetDocumentCount() / 2.0) * ((1.0 / 4));
 
-    if (find_top.size() < 3) {
-        ASSERT_HINT(false, "The server returns an incorrect number of documents"s);
-    }
+    ASSERT_EQUAL_HINT(find_top.size(), 3, "The server returns an incorrect number of documents"s);
 
     {
         double res_relevance = log(server.GetDocumentCount() / 2.0) * ((1.0 / 4)) + log(server.GetDocumentCount() / 2.0) * ((1.0 / 4));
