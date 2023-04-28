@@ -6,7 +6,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <optional>
 
 using namespace std;
 
@@ -115,9 +114,6 @@ public:
     template <typename DocumentPredicate>
     vector<Document> FindTopDocuments(const string& raw_query, DocumentPredicate document_predicate) const {
         const Query query = ParseQuery(raw_query);
-        if (!IsValidWords(query.minus_words) || !IsValidWords(query.plus_words)) {
-            throw invalid_argument("Слова  взапросе невалдины / имеют недопустимые символы."s);
-        }
         auto matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(),
@@ -166,9 +162,6 @@ public:
             throw invalid_argument("По указанному ID документ не найден."s);
         }
         const Query query = ParseQuery(raw_query);
-        if (!IsValidWords(query.minus_words) || !IsValidWords(query.plus_words)) {
-            throw invalid_argument("Слова  взапросе невалдины / имеют недопустимые символы."s);
-        }
         vector<string> matched_words;
         for (const string& word : query.plus_words) {
             if (word_to_document_freqs_.count(word) == 0) {
@@ -237,10 +230,17 @@ private:
 
     QueryWord ParseQueryWord(string text) const {
         bool is_minus = false;
-        // Word shouldn't be empty
+        // проверяем, что слово не пустое и валидное
+        if (text == ""s || !IsValidWord(text)) {
+            throw invalid_argument("Слово содержит недопустимые символы."s);
+        }
         if (text[0] == '-') {
             is_minus = true;
             text = text.substr(1);
+            //Если это минус слово, после оберзания минуса, проверяем, что слово стало не пустым и не имеет в начале еще одного минуса
+            if (text == "" || text[0] == '-') {
+                throw invalid_argument("Минус слово указано неверно."s);
+            }
 
         }
         return { text, is_minus, IsStopWord(text) };
@@ -276,7 +276,7 @@ private:
     template<typename T>
     static bool IsValidWords(const T words) {
         for (const string& word : words) {
-            if (!IsValidWord(word) || word[0] == '-' || word == "") {
+            if (!IsValidWord(word)) {
                 return false;
             }
         }
@@ -340,6 +340,8 @@ int main() {
         search_server.AddDocument(1, "пушистый пёс и модный ошейник"s, DocumentStatus::ACTUAL, { 1, 2 });
         search_server.AddDocument(-1, "пушистый пёс и модный ошейник"s, DocumentStatus::ACTUAL, { 1, 2 });
         search_server.AddDocument(3, "большой пёс скво\x12рец"s, DocumentStatus::ACTUAL, { 1, 3, 2 });
+        search_server.MatchDocument("пес --минус", 1);
+        search_server.MatchDocument("пес скво\x12рец", 1);
 
         auto documents = search_server.FindTopDocuments("--пушистый"s);
         for (const Document& document : documents) {
