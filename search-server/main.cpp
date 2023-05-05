@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,7 +58,16 @@ struct Document {
     int id = 0;
     double relevance = 0.0;
     int rating = 0;
+    friend ostream& operator<<(ostream& out, const Document& document);
 };
+
+ostream& operator<<(ostream& out, const Document& document) {
+    out << "{ "s
+        << "document_id = "s << document.id << ", "s
+        << "relevance = "s << document.relevance << ", "s
+        << "rating = "s << document.rating << " }"s;
+    return out;
+}
 
 template <typename StringContainer>
 set<string> MakeUniqueNonEmptyStrings(const StringContainer& strings) {
@@ -79,12 +89,12 @@ enum class DocumentStatus {
 
 class SearchServer {
 public:
-
     template <typename StringContainer>
     explicit SearchServer(const StringContainer& stop_words)
-        : stop_words_(MakeUniqueNonEmptyStrings(stop_words)) {
-        if (!IsValidWords(stop_words_)) {
-            throw invalid_argument("Стоп-слова невалдны / содержат недопустимые символы."s);
+        : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
+    {
+        if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
+            throw invalid_argument("Some of stop words are invalid"s);
         }
     }
 
@@ -96,24 +106,24 @@ public:
 
     void AddDocument(int document_id, const string& document, DocumentStatus status,
         const vector<int>& ratings) {
-        if (document_id < 0 || documents_.count(document_id) > 0) {
-            throw invalid_argument("Указан недопустимый id документа."s);
+        if ((document_id < 0) || (documents_.count(document_id) > 0)) {
+            throw invalid_argument("Invalid document_id"s);
         }
-        const vector<string> words = SplitIntoWordsNoStop(document);
-        if (!IsValidWords(words)) {
-            throw invalid_argument("Слова документа невалидны / содержат недопустимые символы."s);
-        }
+        const auto words = SplitIntoWordsNoStop(document);
+
         const double inv_word_count = 1.0 / words.size();
         for (const string& word : words) {
             word_to_document_freqs_[word][document_id] += inv_word_count;
         }
         documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
-        documents_id_[documents_id_.size()] = document_id;
+        document_ids_.push_back(document_id);
     }
 
     template <typename DocumentPredicate>
-    vector<Document> FindTopDocuments(const string& raw_query, DocumentPredicate document_predicate) const {
-        const Query query = ParseQuery(raw_query);
+    vector<Document> FindTopDocuments(const string& raw_query,
+        DocumentPredicate document_predicate) const {
+        const auto query = ParseQuery(raw_query);
+
         auto matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(),
@@ -128,6 +138,7 @@ public:
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
         }
+
         return matched_documents;
     }
 
@@ -147,21 +158,13 @@ public:
     }
 
     int GetDocumentId(int index) const {
-
-        if (index < 0 || index >= GetDocumentCount()) {
-            throw out_of_range("По указанному порядковому номеру документ не найден."s);
-        }
-        else {
-            //Можно оставить только это, но тогда сообщение об ошибке не понятное.
-            return documents_id_.at(index);
-        }
+        return document_ids_.at(index);
     }
 
-    tuple<vector<string>, DocumentStatus> MatchDocument(const string& raw_query, int document_id) const {
-        if (!documents_.count(document_id)) {
-            throw invalid_argument("По указанному ID документ не найден."s);
-        }
-        const Query query = ParseQuery(raw_query);
+    tuple<vector<string>, DocumentStatus> MatchDocument(const string& raw_query,
+        int document_id) const {
+        const auto query = ParseQuery(raw_query);
+
         vector<string> matched_words;
         for (const string& word : query.plus_words) {
             if (word_to_document_freqs_.count(word) == 0) {
@@ -180,30 +183,36 @@ public:
                 break;
             }
         }
-        return tuple<vector<string>, DocumentStatus>{ matched_words, documents_.at(document_id).status };
-
+        return { matched_words, documents_.at(document_id).status };
     }
-
-
 
 private:
     struct DocumentData {
         int rating;
         DocumentStatus status;
     };
-
     const set<string> stop_words_;
     map<string, map<int, double>> word_to_document_freqs_;
     map<int, DocumentData> documents_;
-    map<int, int> documents_id_;
+    vector<int> document_ids_;
 
     bool IsStopWord(const string& word) const {
         return stop_words_.count(word) > 0;
     }
 
+    static bool IsValidWord(const string& word) {
+        // A valid word must not contain special characters
+        return none_of(word.begin(), word.end(), [](char c) {
+            return c >= '\0' && c < ' ';
+            });
+    }
+
     vector<string> SplitIntoWordsNoStop(const string& text) const {
         vector<string> words;
         for (const string& word : SplitIntoWords(text)) {
+            if (!IsValidWord(word)) {
+                throw invalid_argument("Word "s + word + " is invalid"s);
+            }
             if (!IsStopWord(word)) {
                 words.push_back(word);
             }
@@ -228,22 +237,21 @@ private:
         bool is_stop;
     };
 
-    QueryWord ParseQueryWord(string text) const {
+    QueryWord ParseQueryWord(const string& text) const {
+        if (text.empty()) {
+            throw invalid_argument("Query word is empty"s);
+        }
+        string word = text;
         bool is_minus = false;
-        // проверяем, что слово не пустое и валидное
-        if (text == ""s || !IsValidWord(text)) {
-            throw invalid_argument("Слово содержит недопустимые символы."s);
-        }
-        if (text[0] == '-') {
+        if (word[0] == '-') {
             is_minus = true;
-            text = text.substr(1);
-            //Если это минус слово, после оберзания минуса, проверяем, что слово стало не пустым и не имеет в начале еще одного минуса
-            if (text == "" || text[0] == '-') {
-                throw invalid_argument("Минус слово указано неверно."s);
-            }
-
+            word = word.substr(1);
         }
-        return { text, is_minus, IsStopWord(text) };
+        if (word.empty() || word[0] == '-' || !IsValidWord(word)) {
+            throw invalid_argument("Query word "s + text + " is invalid");
+        }
+
+        return { word, is_minus, IsStopWord(word) };
     }
 
     struct Query {
@@ -252,35 +260,19 @@ private:
     };
 
     Query ParseQuery(const string& text) const {
-        Query query;
+        Query result;
         for (const string& word : SplitIntoWords(text)) {
-            const QueryWord query_word = ParseQueryWord(word);
+            const auto query_word = ParseQueryWord(word);
             if (!query_word.is_stop) {
                 if (query_word.is_minus) {
-                    query.minus_words.insert(query_word.data);
+                    result.minus_words.insert(query_word.data);
                 }
                 else {
-                    query.plus_words.insert(query_word.data);
+                    result.plus_words.insert(query_word.data);
                 }
             }
         }
-        return query;
-    }
-
-    static bool IsValidWord(const string& word) {
-        return none_of(word.begin(), word.end(), [](char c) {
-            return c >= '\0' && c < ' ';
-            });
-    }
-
-    template<typename T>
-    static bool IsValidWords(const T words) {
-        for (const string& word : words) {
-            if (!IsValidWord(word)) {
-                return false;
-            }
-        }
-        return true;
+        return result;
     }
 
     // Existence required
@@ -322,41 +314,81 @@ private:
         return matched_documents;
     }
 };
-// ==================== для примера =========================
 
-void PrintDocument(const Document& document) {
-    cout << "{ "s
-        << "document_id = "s << document.id << ", "s
-        << "relevance = "s << document.relevance << ", "s
-        << "rating = "s << document.rating << " }"s << endl;
+template<typename Iterator>
+class IteratorRange {
+public:
+    IteratorRange(const Iterator& begin, const Iterator& end, const size_t& size) {
+        this->it_begin = begin;
+        this->it_end = end;
+        this->size = size;
+    }
+    IteratorRange(const Iterator& begin, const Iterator& end) {
+        const size_t size = distance(begin, end);
+        IteratorRange(begin, end, size);
+    }
+    Iterator begin() {
+        return it_begin;
+    }
+    Iterator end() {
+        return it_end;
+    }
+
+    friend ostream& operator<<(ostream& out, const IteratorRange& iterator) {
+        for (Iterator it = iterator.it_begin; it != iterator.it_end; ++it) {
+            out << *it;
+        }
+        return out;
+    }
+
+private:
+    Iterator it_begin;
+    Iterator it_end;
+    size_t size;
+};
+
+
+template<typename Iterator>
+class Paginator {
+public:
+    Paginator(const Iterator& range_begin, const Iterator& range_end, const size_t& page_size) {
+        size_t size_container = distance(range_begin, range_end);
+        for (size_t i = 0; i < size_container; i += page_size) {
+            Iterator current_begin = range_begin + i;
+            Iterator current_end = current_begin > range_end - page_size ? range_end : current_begin + page_size;
+            iterators_.push_back(IteratorRange(current_begin, current_end, distance(current_begin, current_end)));
+        }
+    }
+    typename vector<IteratorRange<Iterator>>::const_iterator begin() const {
+        return iterators_.begin();
+    }
+    typename vector<IteratorRange<Iterator>>::const_iterator end() const {
+        return iterators_.end();
+    }
+private:
+    vector<IteratorRange<Iterator>> iterators_;
+};
+
+
+
+template <typename Container>
+auto Paginate(const Container& c, size_t page_size) {
+    return Paginator(begin(c), end(c), page_size);
 }
 int main() {
-    setlocale(LC_ALL, "rus");
-    try {
-        SearchServer search_server("и в на"s);
-        // Явно игнорируем результат метода AddDocument, чтобы избежать предупреждения
-        // о неиспользуемом результате его вызова
-        (void)search_server.AddDocument(1, "пушистый кот пушистый хвост"s, DocumentStatus::ACTUAL, { 7, 2, 7 });
-        search_server.AddDocument(1, "пушистый пёс и модный ошейник"s, DocumentStatus::ACTUAL, { 1, 2 });
-        search_server.AddDocument(-1, "пушистый пёс и модный ошейник"s, DocumentStatus::ACTUAL, { 1, 2 });
-        search_server.AddDocument(3, "большой пёс скво\x12рец"s, DocumentStatus::ACTUAL, { 1, 3, 2 });
-        search_server.MatchDocument("пес --минус", 1);
-        search_server.MatchDocument("пес скво\x12рец", 1);
-
-        auto documents = search_server.FindTopDocuments("--пушистый"s);
-        for (const Document& document : documents) {
-            PrintDocument(document);
-        }
-        search_server.GetDocumentId(-1);
+    SearchServer search_server("and with"s);
+    search_server.AddDocument(1, "funny pet and nasty rat"s, DocumentStatus::ACTUAL, { 7, 2, 7 });
+    search_server.AddDocument(2, "funny pet with curly hair"s, DocumentStatus::ACTUAL, { 1, 2, 3 });
+    search_server.AddDocument(3, "big cat nasty hair"s, DocumentStatus::ACTUAL, { 1, 2, 8 });
+    search_server.AddDocument(4, "big dog cat Vladislav"s, DocumentStatus::ACTUAL, { 1, 3, 2 });
+    search_server.AddDocument(5, "big dog hamster Borya"s, DocumentStatus::ACTUAL, { 1, 1, 1 });
+    const auto search_results = search_server.FindTopDocuments("curly dog"s);
+    int page_size = 2;
+    const auto pages = Paginate(search_results, page_size);
+    // Выводим найденные документы по страницам
+    for (auto page = pages.begin(); page != pages.end(); ++page) {
+        const auto& item = *page;
+        cout << *page << endl;
+        cout << "Page break"s << endl;
     }
-    catch (invalid_argument const& str) {
-        cout << "Ошибка: " << str.what() << endl;
-    }
-    catch (out_of_range const& str) {
-        cout << "Ошибка: " << str.what() << endl;
-    }
-    catch (...) {
-        cout << "Ошибка в работе сервера."s << endl;
-    }
-
 }
