@@ -1,12 +1,9 @@
 #pragma once
-#include "document.h"
 #include <iostream>
 #include <vector>
 
 std::string ReadLine();
 int ReadLineWithNumber();
-std::ostream& operator<<(std::ostream& out, const Document& document);
-std::ostream& operator<<(std::ostream& out, const DocumentStatus& status);
 
 template<typename T>
 void Print(std::ostream& out, const T& container) {
