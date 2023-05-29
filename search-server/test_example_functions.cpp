@@ -1,4 +1,5 @@
 #include "test_example_functions.h"
+#include <cmath>
 
 using namespace std::literals::string_literals;
 
@@ -12,6 +13,15 @@ void AssertImpl(bool value, const std::string& expr_str, const std::string& file
         }
         std::cout << std::endl;
         std::abort();
+    }
+}
+
+void AddDocument(SearchServer& search_server, const int document_id, const std::string& document, const DocumentStatus status, const std::vector<int>& ratings) {
+    try {
+        search_server.AddDocument(document_id, document, status, ratings);
+    }
+    catch (const std::invalid_argument& e) {
+        std::cout << std::string("Can not add a document ") << document_id << std::string(": ") << e.what() << std::endl;
     }
 }
 
@@ -261,16 +271,16 @@ void TestRelevanceTopDocs() {
     ASSERT_EQUAL_HINT(find_top.size(), 3, "The server returns an incorrect number of documents"s);
 
     {
-        double res_relevance = log(server.GetDocumentCount() / 2.0) * ((1.0 / 4)) + log(server.GetDocumentCount() / 2.0) * ((1.0 / 4));
-        ASSERT_HINT(abs(find_top[0].relevance - res_relevance) < ACCURACY, "the server does not correctly consider relevance"s);
+        double res_relevance = std::log(server.GetDocumentCount() / 2.0) * ((1.0 / 4)) + std::log(server.GetDocumentCount() / 2.0) * ((1.0 / 4));
+        ASSERT_HINT(std::abs(find_top[0].relevance - res_relevance) < ACCURACY, "the server does not correctly consider relevance"s);
     }
 
     //doc1
     //CITY
     //double rel_city = log(server.GetDocumentCount() / 2.0) * ((1.0 / 4))
     {
-        double res_relevance = log(server.GetDocumentCount() / 2.0) * ((1.0 / 4));
-        ASSERT_HINT(abs(find_top[1].relevance - res_relevance) < ACCURACY, "the server does not correctly consider relevance"s);
+        double res_relevance = std::log(server.GetDocumentCount() / 2.0) * ((1.0 / 4));
+        ASSERT_HINT(std::abs(find_top[1].relevance - res_relevance) < ACCURACY, "the server does not correctly consider relevance"s);
     }
 }
 

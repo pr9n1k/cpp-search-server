@@ -59,3 +59,5 @@ void TestFindDocsWithStatus();
 void TestRelevanceTopDocs();
 // Функция TestSearchServer является точкой входа для запуска тестов
 void TestSearchServer();
+//Обвертка  вокруг сервера
+void AddDocument(SearchServer& search_server, const int document_id, const std::string& document, const DocumentStatus status, const std::vector<int>& ratings);
