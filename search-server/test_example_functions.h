@@ -4,8 +4,6 @@
 #include "search_server.h"
 #include "read_input_functions.h"
 
-const double ACCURACY = 1e-6;
-
 template <typename T, typename U>
 void AssertEqualImpl(const T& t, const U& u, const std::string& t_str, const std::string& u_str, const std::string& file,
     const std::string& func, unsigned line, const std::string& hint) {
